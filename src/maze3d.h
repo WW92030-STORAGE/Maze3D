@@ -25,6 +25,14 @@ constexpr bool isZeroOne(float f) {
 	return isFloatZero(f) || isFloatZero(f - 1);
 }
 
+inline float normalizeAngle(float f) {
+	constexpr float TAU = 2.0f * M_PI;
+	float g = fmod(f, TAU);
+	if (g < -M_PI) g += TAU;
+	if (g > M_PI) g -= TAU;
+	return g;
+}
+
 // UTILS
 
 std::string u8tohex(uint8_t x) {
@@ -102,7 +110,10 @@ struct Maze3dVec2 {
 		return sqrtf(normsquared());
 	}
 	float angle() {
-		return atan2(y, x);
+		return normalizeAngle(atan2(y, x));
+	}
+	float dot(Maze3dVec2 o) {
+		return x * o.x + y * o.y;
 	}
 	Maze3dVec2 normalized() {
 		float len = length();
@@ -177,6 +188,7 @@ The view angle is measured counterclockwise from +x.
 */
 
 struct Maze3d {
+	float NEAR_PLANE = 0.01;
 	uint32_t FLOOR = 0x808080FF;
 	uint32_t CEIL = 0xC0C0C0FF;
 	uint32_t BORDER = 0x404040FF; // The border has texture id -1 or 255.
@@ -277,6 +289,7 @@ struct Maze3d {
 	}
 
 	std::vector<Maze3dColumn> generateColumns(Maze3dVec2 v = {0.5f, 0.5f}, int len = 64, float viewAngle = M_PI * 0.25f, float FOV = SQUARE_FOV) {
+		viewAngle = fmod(viewAngle, M_PI * 2.0f);
 		if (len <= 0) len = 1;
 		std::vector<Maze3dColumn> res(len);
 
@@ -307,19 +320,40 @@ struct Maze3d {
 
 	// characters begin on the floor -- that means 0.5/(orthodist) below the horizon line (height>>1). 
 	void drawCharacters(std::vector<std::vector<uint32_t>>& buffer, std::vector<Maze3dColumn>& columns, Maze3dVec2 v, float viewAngle, float FOV) {
+		// std::cout << "FRAME: " << v.to_string() << " " << viewAngle << " " << FOV << "\n";
+		viewAngle = normalizeAngle(viewAngle);
 		if (FOV <= 0) return;
 		float invFOV = 1.0f / FOV;
 		int N = buffer.size();
 		int height = buffer[0].size();
 		float VERTICAL_SCALING_FACTOR = SQUARE_FOV / FOV;
+		std::vector<std::pair<float, int>> indices;
 		for (int si = 0; si < characters.size(); si++) {
 			Maze3dCharacter spr = characters[si];
 			Maze3dVec2 disp = spr.pos - v;
-			float dtheta = disp.angle() - viewAngle;
-			float dist = disp.length();
+			float dtheta = normalizeAngle(disp.angle() - viewAngle);
 			float cosine = cosf(dtheta);
+			if (cosine <= 0) continue;
+			float dist = disp.length();
 			float orthoDist = dist * cosine;
-			if (orthoDist <= 0) continue;
+			// std::cout << si << " rawtheta=" << disp.angle() - viewAngle << " -- dtheta=" << dtheta << " d=" << dist << " cos=" << cosine << " ortho=" << orthoDist << "\n";
+			if (orthoDist <= NEAR_PLANE) continue;
+			indices.push_back({-orthoDist, si});
+		}
+		std::sort(indices.begin(), indices.end());
+		for (int xi = 0; xi < indices.size(); xi++) {
+			int si = indices[xi].second;
+			Maze3dCharacter spr = characters[si];
+			Maze3dVec2 disp = spr.pos - v;
+			float dtheta = normalizeAngle(disp.angle() - viewAngle);
+			/*
+			float cosine = cosf(dtheta);
+			if (cosine < 0) continue;
+			float dist = disp.length();
+			float orthoDist = dist * cosine;
+			*/
+			float orthoDist = -indices[xi].first;
+
 			float invOD = 1.0f / orthoDist;
 
 			float floorDiameter = VERTICAL_SCALING_FACTOR * invOD;
@@ -333,20 +367,23 @@ struct Maze3d {
 			float relWidth = spr.width * invOD;
 			float relX = 0.5f - dtheta * invFOV;
 			int baseX = (relX - relWidth * 0.5f) * N;
-			// std::cout << dtheta << "rx=" << relX << "w=" << relWidth << "h=" << relHeight << "bx" << baseX << "\n";
+			// std::cout << xi << " " << si << " = dtheta=" << dtheta << "rx=" << relX << "w=" << relWidth << "h=" << relHeight << "bx" << baseX << "od=" << orthoDist << "\n";
+			if (baseX + relX * N <= -N || baseX >= N) continue;
 			float invWN = 1.0f / (relWidth * N);
 			float invWH = 1.0f / (relHeight * N);
-			for (int r = 0; r < relWidth * N; r++) {
+			for (int r = std::max(0, -baseX - 1); r < relWidth * N; r++) {
 				int x = r + baseX;
+				if (x < 0) continue;
+				if (x >= N) break;
 				if (orthoDist >= columns[x].depth) continue;
-				for (int c = 0; c < relHeight * N; c++) {
+				for (int c = std::max(0, int(baseYOffset) - (height>>1) - 1); c < relHeight * N; c++) {
 					int y = (height>>1) - baseYOffset + c;
+					if (y < trueFloor || y < 0) continue;
+					if (y >= trueCeil || y >= height) break;
 					
-					if (x >= 0 && x < N && y >= 0 && y < height && y >= trueFloor && y <= trueCeil) {
-						uint32_t bg = buffer[x][y];
-						uint32_t ontop = getTexel(spr.texId, r * invWN, c * invWH);
-						buffer[x][y] = blend(bg, ontop);
-					}
+					uint32_t bg = buffer[x][y];
+					uint32_t ontop = getTexel(spr.texId, r * invWN, c * invWH);
+					buffer[x][y] = blend(bg, ontop);
 				}
 			}
 		}
@@ -384,6 +421,7 @@ struct Maze3d {
 
 	// image width, image height, player position, player direction, player FOV
 	std::string renderBuffer(int N = 64, int height = 0, Maze3dVec2 v = {0.5f, 0.5f}, float viewAngle = M_PI * 0.25f, float FOV = SQUARE_FOV) {
+		viewAngle = fmod(viewAngle, M_PI * 2.0f);
 		if (height <= 0) height = N;
 		std::vector<Maze3dColumn> columns = generateColumns(v, N, viewAngle, FOV);
 		std::vector<std::vector<uint32_t>> buf = buffer(columns, height, FOV);

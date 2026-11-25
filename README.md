@@ -1,6 +1,6 @@
 # maze3d
 
-Wolfenstein-style raycaster, maze generator, and maze stepper. Came across demos of similar raycasters on insta reels enough times so I decided to make one.
+Wolfenstein3D-esque raycaster, maze generator, and maze stepper. Came across demos of similar raycasters on insta reels enough times so I decided to make one.
 Supports grid-based block maps and billboarded sprites.
 
 ## USAGE
@@ -30,4 +30,4 @@ NOTE - Using `a < 255` on the floor, ceiling, or wall textures might have uninte
 
 <img src="examples/example.png" width=60% alt="Example!"> 
 
-<img src="examples/256p.gif" width=60% alt="Example!"> 
+<img src="examples/512p.gif" width=60% alt="Example!"> 

@@ -85,7 +85,7 @@ uint8_t rightHandRule(Maze3d& maze, int x, int y, int d) {
 	return MazeAction::SPIN;
 }
 
-void renderMazeRunner(Maze3d& maze, uint8_t (*makeMove)(Maze3d&, int, int, int), int LEN = 128, int height = 64, float FOV = M_PI / 3.0f, int sx = 0, int sy = 0, std::string OUT_DIR = "video", int NMOVES = 1024, int FPM = 8) {
+void renderMazeRunner(Maze3d& maze, uint8_t (*makeMove)(Maze3d&, int, int, int), int LEN = 128, int height = 64, int NMOVES = 1024, int FPM = 8, float FOV = SQUARE_FOV, int sx = 0, int sy = 0, std::string OUT_DIR = "video") {
 	if (FPM < 0) FPM = 1;
 
 	if (maze.get(sx, sy)) {
@@ -102,7 +102,7 @@ void renderMazeRunner(Maze3d& maze, uint8_t (*makeMove)(Maze3d&, int, int, int),
 	const int dy[4] = {0, 1, 0, -1};
 	int x = sx;
 	int y = sy;
-	int d = 0;
+	int d = 1;
 
 	float invFPM = 1.0f / FPM;
 	float turnStep = invFPM * (M_PI * 0.5f);
@@ -180,7 +180,7 @@ void renderMazeRunner(Maze3d& maze, uint8_t (*makeMove)(Maze3d&, int, int, int),
 			x = xp;
 			y = yp;
 		}
-		std::cout << "MV " << (mv+1) << "/" << NMOVES << ":" << x << " " << y << " " << d << "\n";
+		if (mv % 16 == 0) std::cout << "MV " << (mv+1) << "/" << NMOVES << ":" << x << " " << y << " " << d << "\n";
 
 		if (x == sx && y == sy && d == 0) {
 			std::cout << "LOOPED\n";
